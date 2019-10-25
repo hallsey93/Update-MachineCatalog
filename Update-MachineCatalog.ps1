@@ -1,11 +1,13 @@
 ﻿##############################################################################################################################
 #### Script:      Update-MachineCatalog.ps1                                      
 #### Author:      Callan Halls-Palmer                                            
-#### Version:     1.0                                                            
+#### Version:     1.2                                                            
 #### Description: This script will allow an admin to quickly update a Machine Catalog using a selection of prompts.
 ####
-#### Changes:
-####                              
+#### Changes:     v1.2 - 16-10-2019 - CHP: Added functionality to query available Master VM's instead of asking admin to type.
+####              v1.3 - 21-10-2019 - CHP: Added logic to intelligently snapshot a Master VM in VMware if the user hasn't 
+####                                       performed a manual snapshot.
+####              v1.4 - 22-10-2019 - CHP: Added functionality to automatically detect region instead of prompting the admin.                              
 ##############################################################################################################################
 # Create Base Variables Section #
 $Regions = "UK","AME","EMEA","APAC"
@@ -26,38 +28,57 @@ Write-Output ((Get-Timestamp)+'   -                              $Log = '+$Log) 
 Write-Output "$(Get-Timestamp)   -   The actions completed by this script will be captured below." >> $Log
 # Set Base Variables per region Function #
 ############################### Create Functions for use with whole Script ###############################
+# Create Set-BaseVariables Function #
+Function Check-VMware{
+    $1stAnswer = Read-Host "
+Have you carried out a Snapshot of your Master VM via the vSphere Web Console? (y/n)"
+    If($1stAnswer -eq "n"){
+        $2ndAnswer = Read-Host "
+Will you Snapshot the Master VM now? (y/n)"
+        If($2ndAnswer -eq "y"){
+            $Global:Username = Read-Host "
+Please enter your Username to access VMware vCenter"
+            $Global:Password = Read-Host "
+Please enter your Password to access VMware vCenter" -AsSecureString
+            $Global:Credentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $Username,$Password
+            Connect-vCenter
+            Check-VMSnapshot
+        }
+        Else{
+            Write-Host -ForegroundColor Cyan -Verbose "
+$(Get-Date -Format hh:mm:ss)   -   $env:USERNAME has chosen not to snapshot the Master VM via the script. Either choose an existing Snapshot in the upcoming steps or Snapshot the Master VM via vSphere Web Console now."
+        }
+    }
+    Elseif($1stAnswer -eq "y"){
+    Write-Host -ForegroundColor Cyan -Verbose "$(Get-Date -Format hh:mm:ss)   -   $env:USERNAME has carried out a snaphot of the Master VM manually via vSphere web console";Write-Output "$(get-Timestamp)   -   $env:USERNAME has carried out a snaphot of the Master VM manually via vSphere web console" >> $Log
+    }
+}
 # Function to execute script #
 Function Execute-MachineCatalogUpdate{
-    Write-Host -ForegroundColor White "Please choose a Region:
-    "
-    For ($i=0; $i -lt $Regions.Count; $i++)  {
-        Write-Host -ForegroundColor Yellow "$($i+1): $($Regions[$i])"
-    }
-    [int]$number = Read-Host "
-Press the number to select a Region: "
-    If($($Regions[$number-1]) -eq "UK"){
-        Write-Host -ForegroundColor White -Verbose "
-### Region Section ###"
-        Write-Host -ForegroundColor Cyan -Verbose "$(Get-Date -Format hh:mm:ss)   -   Carrying out Machine Catalog update against the UK Site.";Write-Output ((Get-Timestamp)+'   -   '+$env:USERNAME+' selected 1.UK. Proceeding to Process-UKRegion Function') >> $Log
+    $DCQuery = Get-ADDomainController -Discover | Select HostName
+    If($DCQuery.HostName -like "*LON*" -or $DCQuery.HostName -like "*GB*"){
+        Write-Host -ForegroundColor Green -Verbose "
+$(Get-Date -Format hh:mm:ss)   -   The script has detected that it is running in the United Kingdom";Write-Output "$(Get-Timestamp)   -   The script has detected that it is running in the United Kingdom" >> $Log
+        Write-Output "$(Get-Timestamp)   -   Region is set to UK" >> $Log;
         Process-UKRegion
     }
-    If($($Regions[$number-1]) -eq "AME"){
-        Write-Host -ForegroundColor White -Verbose "
-### Region Section ###"
-        Write-Host -ForegroundColor Cyan -Verbose "$(Get-Date -Format hh:mm:ss)   -   Carrying out Machine Catalog update against the AME Site." ;Write-Output ((Get-Timestamp)+'   -   '+$env:USERNAME+' selected 2.AME. Proceeding to Process-AMERegion Function') >> $Log
-        Process-AMERegion
-    }
-    If($($Regions[$number-1]) -eq "EMEA"){
-        Write-Host -ForegroundColor White -Verbose "
-### Region Section ###"
-        Write-Host -ForegroundColor Cyan -Verbose "$(Get-Date -Format hh:mm:ss)   -   Carrying out Machine Catalog update against the CE Site." ;Write-Output ((Get-Timestamp)+'   -   '+$env:USERNAME+' selected 3.EMEA. Proceeding to Process-EMEARegion Function') >> $Log
+    If($DCQuery.HostName -like "*ESC*" -or $DCQuery.HostName -like "*DE*"){
+        Write-Host -ForegroundColor Green "
+$(Get-Date -Format hh:mm:ss)   -   The script has detected that it is running in Continental Europe";Write-Output "$(Get-Timestamp)   -   The script has detected that it is running in Continental Europe" >> $Log
+        Write-Output "$(Get-Timestamp)   -   Region is set to EMEA" >> $Log;
         Process-EMEARegion
     }
-    If($($Regions[$number-1]) -eq "APAC"){
-        Write-Host -ForegroundColor White -Verbose "
-### Region Section ###"
-        Write-Host -ForegroundColor Cyan -Verbose "$(Get-Date -Format hh:mm:ss)   -   Carrying out Machine Catalog update against the APAC Site." ;Write-Output ((Get-Timestamp)+'   -   '+$env:USERNAME+' selected 4.APAC. Proceeding to Process-APACRegion Function') >> $Log
+    If($DCQuery.HostName -like "*HK*" -or $DCQuery.HostName -like "*HKG*"){
+        Write-Host -ForegroundColor Green "
+$(Get-Date -Format hh:mm:ss)   -   The script has detected that it is running in Asia";Write-Output "$(Get-Timestamp)   -   The script has detected that it is running in Asia" >> $Log
+        Write-Output "$(Get-Timestamp)   -   Region is set to APAC" >> $Log;
         Process-APACRegion
+    }
+    If($DCQuery.HostName -like "*US*" -or $DCQuery.HostName -like "*NYC*"){
+        Write-Host -ForegroundColor Green "
+$(Get-Date -Format hh:mm:ss)   -   The script has detected that it is running in the Americas";Write-Output "$(Get-Timestamp)   -   The script has detected that it is running in the Americas" >> $Log
+        Write-Output "$(Get-Timestamp)   -   Region is set to AME" >> $Log;
+        Process-AMERegion
     }
 }
 # Create Set-DDC Function #
@@ -80,35 +101,107 @@ Function Set-DDC{
         Exit
     }
 }
+# Create Check-VMSnapshot Function #
+Function Check-VMSnapshot{
+    Write-Host -ForegroundColor White -Verbose "
+### VMware Section ###"
+    Write-Output "$(Get-Timestamp)   -   $env:USERNAME chose to snapshot the Master VM via the script" >> $Log
+    $VMs = Get-VM | Where-Object {$_.Name -like "*000" -or $_.Name -like "*XXX*"} | Select Name
+    Write-Host -ForegroundColor White -Verbose "
+Please choose a Master VM:
+"
+    For ($i=0; $i -lt $VMs.Count; $i++){
+    Write-Host "$($i+1): $($VMs.Name[$i])" -ForegroundColor Yellow -Verbose
+    }
+    [int]$number = Read-Host "
+Press the number to select a VM"
+    $Global:MasterVM = $($VMs[$number-1]);Write-Output ((Get-Timestamp)+'   -   '+$env:USERNAME+' selected the following Master VM: '+$MasterVM.Name) >> $Log
+    Write-Host -ForegroundColor Cyan -Verbose "
+Gathering VM and Snapshot information from vCenter"
+    $LatestSnapshot = Get-Snapshot -VM $MasterVM.Name | Select Name,Description | Sort-Object Name -Descending | Select-Object -First 1
+    $PriorSnapshot = ($LatestSnapshot.Name).Substring(0,4)
+    $MajorVersion = ($LatestSnapshot.Name).Substring(1,1)
+    $MinorVersion = ($LatestSnapshot.Name).Substring(3,1)
+    If($MinorVersion -eq "9"){
+        $MinorVersion = "0"
+        $LatestVersion = New-Object -TypeName PSObject
+        $Properties = [ordered]@{FullVersion=$PriorSnapshot;MajorVersion=$MajorVersion;MinorVersion=$MinorVersion}
+        $LatestVersion | Add-Member -NotePropertyMembers $Properties -TypeName Version
+        $versionString = ($LatestVersion.MajorVersion+'.'+$LatestVersion.MinorVersion)
+        $Version = [Version]$versionString
+        $NewVersion = "{0}.{1}" -f ($Version.Major + 1), $Version.Minor
+    }
+    Else{
+        $LatestVersion = New-Object -TypeName PSObject
+        $Properties = [ordered]@{FullVersion=$PriorSnapshot;MajorVersion=$MajorVersion;MinorVersion=$MinorVersion}
+        $LatestVersion | Add-Member -NotePropertyMembers $Properties -TypeName Version
+        $versionString = ($LatestVersion.MajorVersion+'.'+$LatestVersion.MinorVersion)
+        $Version = [Version]$versionString
+        $NewVersion = "{0}.{1}" -f $Version.Major, ($Version.Minor + "1")
+    }
+    $LatestSnapshotString = $LatestSnapshot.Name | Out-String
+    $MainString = $LatestSnapshotString.Split(" ",2).Split("-")[1]
+    $Answer3 = Read-Host ('
+Do you want to enter a name for this Snapshot? The previous Snapshot is: '+$LatestSnapshot.Name+' (y/n)')
+    If($Answer3 -eq "y"){
+        $NewSnapshotName = Read-Host "Enter a name for the Snapshot"
+    }
+    Else{
+        $NewSnapshotName = ('v'+$NewVersion+' '+$MainString+'- '+$Date)
+    }
+    $Answer4 = Read-Host "
+Do you want to enter a description for this Snapshot? (y/n)"
+    If($Answer4 -eq "y"){
+        $NewSnapshotDescription = Read-Host ('Enter a description for Snapshot '+$LatestSnapshot.FullVersion)
+    }
+    Else{
+        $NewSnapshotDescription = "Automated Snapshot completed by Update-MachineCatalog script. Initiated by: $env:USERNAME"
+    }
+    # New VM Snapshot #
+    New-Snapshot -VM $MasterVM.Name -Name $NewSnapshotName -Description $NewSnapshotDescription -RunAsync -Confirm:$false | Out-Null
+    Write-Host -ForegroundColor Green -Verbose "
+$(Get-Date -Format hh:mm:ss)   -   New VM Snapshot created: $NewSnapshotName";Write-Output "$(Get-Timestamp)   -   New Snapshot created: $NewSnapshotName" >> $Log
+}
+# Create Connect-vCenter Function #
+Function Connect-vCenter{
+    If($SelectedRegion -eq "UK"){Connect-VIServer "UK vcenter FQDN" -Credential $Credentials;Write-Output "$(Get-Timestamp)   -   $env:USERNAME has succesfully connected to UK vCenter" >> $Log}
+    If($SelectedRegion -eq "AME"){Connect-VIServer "AME vcenter FQDN" -Credential $Credentials;Write-Output "$(Get-Timestamp)   -   $env:USERNAME has succesfully connected to AME vCenter" >> $Log}
+    If($SelectedRegion -eq "EMEA"){Connect-VIServer "EMEA vcenter FQDN" -Credential $Credentials;Write-Output "$(Get-Timestamp)   -   $env:USERNAME has succesfully connected to EMEA vCenter" >> $Log}
+    If($SelectedRegion -eq "APAC"){Connect-VIServer "APAC vcenter FQDN" -Credential $Credentials;Write-Output "$(Get-Timestamp)   -   $env:USERNAME has succesfully connected to APAC vCenter" >> $Log}
+}
 # Create UK Function #
 Function Process-UKRegion{
     $Global:SelectedRegion = "UK"
+    Check-VMware
     Write-Host -ForegroundColor Green -Verbose "$(Get-Date -Format hh:mm:ss)   -   Selected Region is: United Kingdom" ;Write-Output "$(Get-Timestamp)   -   Selected Region is: United Kindgom" >> $Log
-    $DDCs = "pgb0xddc001.internal.cliffordchance.net","pgb0xddc002.internal.cliffordchance.net";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
+    $DDCs = "ddc1","ddc2";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
     Set-DDC
     Update-MachineCatalog # Runs the Update-MachineCatalog function #
 }
 # Create AME Function #
 Function Process-AMERegion{
     $Global:SelectedRegion = "AME"
+    Check-VMware
     Write-Host -ForegroundColor Green -Verbose "$(Get-Date -Format hh:mm:ss)   -   Selected Region is: Americas" ;Write-Output "$(Get-Timestamp)   -   Selected Region is: Americas" >> $Log
-    $DDCs = "pus0xddc001.internal.cliffordchance.net","pus9xddc001.internal.cliffordchance.net";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
+    $DDCs = "ddc1","ddc2";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
     Set-DDC
     Update-MachineCatalog # Runs the Update-MachineCatalog function #
 }
 # Create EMEA Function #
 Function Process-EMEARegion{
     $Global:SelectedRegion = "EMEA"
+    Check-VMware
     Write-Host -ForegroundColor Green -Verbose "$(Get-Date -Format hh:mm:ss)   -   Selected Region is: Continental Europe" ;Write-Output "$(Get-Timestamp)   -   Selected Region is: Continental Europe" >> $Log
-    $DDCs = "pde0xddc001.internal.cliffordchance.net","pde0xddc002.internal.cliffordchance.net";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
+    $DDCs = "ddc1","ddc2";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
     Set-DDC
     Update-MachineCatalog # Runs the Update-MachineCatalog function #
 }
 # Create APAC FUnction #
 Function Process-APACRegion{
     $Global:SelectedRegion = "APAC"
+    Check-VMware
     Write-Host -ForegroundColor Green -Verbose "$(Get-Date -Format hh:mm:ss)   -   Selected Region is: Asia" ;Write-Output "$(Get-Timestamp)   -   Selected Region is: Asia" >> $Log
-    $DDCs = "phk0xddc001.internal.cliffordchance.net","phk9xddc001.internal.cliffordchance.net";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
+    $DDCs = "ddc1","ddc2";Write-Output ((Get-Timestamp)+'   -   Specified Delivery Controllers for '+$SelectedRegion+' are: '+$DDCs[0]+' and '+$DDCs[1]) >> $Log
     Set-DDC
     Update-MachineCatalog # Runs the Update-MachineCatalog function #
 }
@@ -139,6 +232,8 @@ Press the number to select a VM"
         Write-Host -ForegroundColor White "
 ### VM and Snapshot Section ###"
         Write-Host ("$(Get-Date -Format hh:mm:ss)"+'   -   Master VM set to '+$MasterVM.Name) -ForegroundColor Green -Verbose;Write-Output ((Get-Timestamp)+'   -   '+$env:USERNAME+' selected '+$MasterVM.Name+' as the Master VM') >> $Log
+        Invoke-Command -Session $Session -ArgumentList $MasterVM -ScriptBlock {$MasterVM = $($args[0])};Write-Output ((Get-Timestamp)+'   -   Setting $MasterVM to: '+$MasterVM.Name+' inside PSSession on '+$AdminAddress) >> $Log
+        Write-Host ((Get-Date -Format hh:mm:ss)+'   -   MasterVM variable written to '+$AdminAddress+' via PSSession') -ForegroundColor Green -Verbose;Write-Output ((Get-Timestamp)+'   -   Variable successfully set to '+$MasterVM.Name+' on $AdminAddress') >> $Log
     }
     # Select Machine Catalog Function #
     Function Select-MachineCatalog{
@@ -236,8 +331,14 @@ Press the number to select a Hosting Resource"
     # Set a provisioning scheme for the update process #
     $ProvScheme = Set-ProvSchemeMetadata -AdminAddress $AdminAddress -Name 'ImageManagementPrep_DoImagePreparation' -ProvisioningSchemeName $MachineCatalog -Value 'True';Write-Output "$(Get-Timestamp)   -   Setting Provisioning Scheme for Machine Catalog update" >> $Log
     # Get the master VM image from the same storage resource we're going to deploy to. Could pull this from another storage resource available to the host #
-    Select-MasterVM
-    $VM = $MasterVM
+    #Select-MasterVM
+    If($MasterVM -eq $null){
+        Select-MasterVM
+        $VM = Invoke-Command -Session $Session -ScriptBlock {Get-ChildItem ('XDHyp:\HostingUnits\'+$TargetStorageResource.PSChildName) | Where-Object {$_.ObjectType -eq "VM" -and $_.PSChildName -eq $MasterVM}};Write-Output ((Get-Timestamp)+'   -   Pulled all Master VM candidates into $VMs variable') >> $Log
+    }
+    Else{
+        $VM = Invoke-Command -Session $Session -ScriptBlock {Get-ChildItem ('XDHyp:\HostingUnits\'+$TargetStorageResource.PSChildName) | Where-Object {$_.ObjectType -eq "VM" -and $_.PSChildName -eq ($MasterVM.Name+'.vm')}};Write-Output ((Get-Timestamp)+'   -   Pulled all Master VM candidates into $VMs variable') >> $Log
+    }
     Write-Host -ForegroundColor Cyan -Verbose ("$(Get-Date -Format hh:mm:ss)"+'   -   Getting Snapshot Details for '+$MasterVM.Name);Write-Output ((Get-Timestamp)+'   -   Getting Snapshot Details for '+$MasterVM.Name) >> $Log
     Invoke-Command -Session $Session -ArgumentList $VM -ScriptBlock {$VM = $($args[0])};Write-Output ((Get-Timestamp)+'   -   $VM set to: '+$VM.Name+' on '+$AdminAddress) >> $Log
     # Get the snapshot details. This code will grab the newest entry in the list #
@@ -284,9 +385,9 @@ Function Build-Email{
     # Build Email #
     Write-Output "$(Get-Timestamp)   -   Setting Variables for Email:" >> $Log
     $NoVMs = Get-BrokerCatalog $MachineCatalog | Select-Object AvailableCount;Write-Output ((Get-Timestamp)+'   -                                $NoVMs = '+$NoVMs.AvailableCount) >> $Log
-    $Global:Recipient = "ITOps_GLB_CitrixSupportL2@CliffordChance.com";Write-Output ((Get-Timestamp)+'   -                                $Recipient = '+$Recipient) >> $Log
+    $Global:Recipient = "Recipient Email Address";Write-Output ((Get-Timestamp)+'   -                                $Recipient = '+$Recipient) >> $Log
     $Global:Sender = ('VAD_'+$SelectedRegion+'@cliffordchance.com');Write-Output ((Get-Timestamp)+'   -                                $Sender = '+$Sender) >> $Log
-    $Global:SMTP = "10.49.132.11";Write-Output ((Get-Timestamp)+'   -                                $SMTP = '+$SMTP) >> $Log
+    $Global:SMTP = "0.0.0.0";Write-Output ((Get-Timestamp)+'   -                                $SMTP = '+$SMTP) >> $Log
     $Global:Attachment = $Log
     $Global:Subject = ('The following Machine Catalog has been updated: '+$MachineCatalog+' on '+$Date)
     $Global:Body = 
@@ -315,6 +416,6 @@ Execute-MachineCatalogUpdate
 # Send Email to Administrators #
 Build-Email
 Write-Output ((Get-Timestamp)+'   -   Script Complete, sending Email to '+$Recipient) >> $Log
-Send-MailMessage -To callan.hallspalmer@cliffordchance.com <#$Recipient#> -From $Sender -Subject $Subject -Body $Body -Attachments $Attachment -SmtpServer $SMTP
+Send-MailMessage -To $Recipient -From $Sender -Subject $Subject -Body $Body -Attachments $Attachment -SmtpServer $SMTP
 Exit   
 # End #
