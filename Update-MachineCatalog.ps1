@@ -1,7 +1,7 @@
 ﻿##############################################################################################################################
 #### Script:      Update-MachineCatalog.ps1                                      
 #### Author:      Callan Halls-Palmer                                            
-#### Version:     1.2                                                            
+#### Version:     1.4                                                            
 #### Description: This script will allow an admin to quickly update a Machine Catalog using a selection of prompts.
 ####
 #### Changes:     v1.2 - 16-10-2019 - CHP: Added functionality to query available Master VM's instead of asking admin to type.
